@@ -1,0 +1,147 @@
+{
+  "CADETPath": "C:\\Users\\ronal\\Downloads\\cadet4.2.0-win10-x64\\cadet\\bin\\cadet-cli.exe",
+  "baseDir": "C:\\Users\\ronal\\PycharmProjects\\chrom_bayes_opt\\Examples\\Example3_SMA-gradient-bt",
+  "CSV": "results.csv",
+  "using_nans": true,
+  "search_kwargs_input": {
+    "warmup": 1.0,
+    "search": 19.0,
+    "search_kappa": 0.0,
+    "thresh_c": 9
+  },
+  "seed": 3105,
+  "resultsDir": "results",
+  "timeout": 360,
+  "create_plots": false,
+  "extra_parameter_infos": {
+    "SMA_KD_c1": {
+      "transform": "log",
+      "component": 1,
+      "bound": -1,
+      "experiments": [
+        "5cv",
+        "10cv",
+        "60cv",
+        "30cv",
+        "120cv",
+        "bt"
+      ],
+      "location": "/input/model/unit_001/adsorption/SMA_KD",
+      "min": -60,
+      "max": 20
+    }
+  },
+  "parameters": {
+    "SMA_KA_c1": {
+      "transform": "log",
+      "component": 1,
+      "bound": 0,
+      "experiments": [
+        "5cv",
+        "10cv",
+        "60cv",
+        "30cv",
+        "120cv",
+        "bt"
+      ],
+      "location": "/input/model/unit_001/adsorption/SMA_KA",
+      "min": -5,
+      "truth": 3,
+      "max": 5,
+      "lim_min": -5,
+      "lim_max": 10
+    },
+    "SMA_KEQ_c1": {
+      "transform": "log",
+      "component": 1,
+      "bound": 0,
+      "experiments": [
+        "5cv",
+        "10cv",
+        "60cv",
+        "30cv",
+        "120cv",
+        "bt"
+      ],
+      "location": "/input/model/unit_001/adsorption/SMA_KD",
+      "min": -3,
+      "truth": -1,
+      "max": 3,
+      "lim_min": -6,
+      "lim_max": 6
+    },
+    "SMA_NU_c1": {
+      "transform": "log",
+      "component": 1,
+      "bound": 0,
+      "experiments": [
+        "5cv",
+        "10cv",
+        "60cv",
+        "30cv",
+        "120cv",
+        "bt"
+      ],
+      "location": "/input/model/unit_001/adsorption/SMA_NU",
+      "min": 0,
+      "truth": 1,
+      "max": 2,
+      "lim_min": -2,
+      "lim_max": 2.0
+    },
+    "SMA_SIGMA_c1": {
+      "transform": "log",
+      "component": 1,
+      "bound": 0,
+      "experiments": [
+        "bt"
+      ],
+      "location": "/input/model/unit_001/adsorption/SMA_SIGMA",
+      "min": -1,
+      "truth": 1,
+      "max": 1.6,
+      "lim_min": -2,
+      "lim_max": 2.0
+    }
+  },
+  "experiments": {
+    "30cv": {
+      "CSV": "30.csv",
+      "isotherm": "/output/solution/unit_001/SOLUTION_OUTLET_COMP_001",
+      "HDF5": "30.h5",
+      "timeout": 60,
+      "features": {
+        "t30cv": {
+          "type": "spline_time_ranged",
+          "decay": 0,
+          "weights": [
+            1
+          ]
+        },
+        "h30cv": {
+          "type": "peak_height_ranged",
+          "weights": [
+            1
+          ]
+        }
+      }
+    },
+    "bt": {
+      "CSV": "bt.csv",
+      "isotherm": "/output/solution/unit_001/SOLUTION_OUTLET_COMP_001",
+      "HDF5": "bt.h5",
+      "timeout": 60,
+      "features": {
+        "bt": {
+          "type": "bt2_ranged",
+          "weights": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      }
+    }
+  }
+}

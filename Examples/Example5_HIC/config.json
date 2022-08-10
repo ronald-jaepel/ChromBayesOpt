@@ -1,0 +1,238 @@
+{
+  "CADETPath": "C:\\Users\\ronal\\Downloads\\cadet3.1.2-win7-x64\\cadet\\bin\\cadet-cli.exe",
+  "baseDir": "C:\\Users\\ronal\\PycharmProjects\\chrom_bayes_opt\\Examples\\Example5_HIC",
+  "CSV": "results.csv",
+  "using_nans": true,
+  "search_kwargs_input": {
+    "warmup": 1.0,
+    "search": 19.0,
+    "search_kappa": 0.0,
+    "thresh_c": 9
+  },
+  "seed": 3105,
+  "resultsDir": "results",
+  "timeout": 360,
+  "create_plots": false,
+  "extra_parameter_infos": {},
+  "parameters": {
+    "KEQ_c1": {
+      "transform": "log",
+      "component": 1,
+      "bound": 0,
+      "experiments": [
+        "5cv",
+        "10cv",
+        "60cv",
+        "30cv",
+        "120cv",
+        "bt"
+      ],
+      "location": "/input/model/unit_001/adsorption/KEQ",
+      "min": -3,
+      "truth": 0,
+      "max": 3,
+      "lim_min": -5,
+      "lim_max": 10
+    },
+    "KKIN_c1": {
+      "transform": "log",
+      "component": 1,
+      "bound": 0,
+      "experiments": [
+        "5cv",
+        "10cv",
+        "60cv",
+        "30cv",
+        "120cv",
+        "bt"
+      ],
+      "location": "/input/model/unit_001/adsorption/KKIN",
+      "min": -3,
+      "truth": 0,
+      "max": 3,
+      "lim_min": -6,
+      "lim_max": 6
+    },
+    "NU_c1": {
+      "transform": "log",
+      "component": 1,
+      "bound": 0,
+      "experiments": [
+        "5cv",
+        "10cv",
+        "60cv",
+        "30cv",
+        "120cv",
+        "bt"
+      ],
+      "location": "/input/model/unit_001/adsorption/NU",
+      "min": 0,
+      "truth": 1,
+      "max": 2,
+      "lim_min": -2,
+      "lim_max": 2.0
+    },
+    "beta0": {
+      "transform": "log",
+      "component": -1,
+      "bound": -1,
+      "experiments": [
+        "5cv",
+        "10cv",
+        "60cv",
+        "30cv",
+        "120cv",
+        "bt",
+        "c2_5cv",
+        "c2_10cv",
+        "c2_60cv",
+        "c2_30cv",
+        "c2_120cv",
+        "c2_bt",
+        "c3_5cv",
+        "c3_10cv",
+        "c3_60cv",
+        "c3_30cv",
+        "c3_120cv",
+        "c3_bt"
+      ],
+      "location": "/input/model/unit_001/adsorption/BETA0",
+      "min": -3,
+      "truth": -1.4,
+      "max": 0,
+      "lim_min": -3,
+      "lim_max": 2.0
+    },
+    "beta1": {
+      "transform": "log",
+      "component": -1,
+      "bound": -1,
+      "experiments": [
+        "5cv",
+        "10cv",
+        "60cv",
+        "30cv",
+        "120cv",
+        "bt",
+        "c2_5cv",
+        "c2_10cv",
+        "c2_60cv",
+        "c2_30cv",
+        "c2_120cv",
+        "c2_bt",
+        "c3_5cv",
+        "c3_10cv",
+        "c3_60cv",
+        "c3_30cv",
+        "c3_120cv",
+        "c3_bt"
+      ],
+      "location": "/input/model/unit_001/adsorption/BETA1",
+      "min": -4,
+      "truth": -2.8,
+      "max": -1,
+      "lim_min": -4,
+      "lim_max": -1
+    }
+  },
+  "experiments": {
+    "5cv": {
+      "CSV": "5.csv",
+      "isotherm": "/output/solution/unit_001/SOLUTION_OUTLET_COMP_001",
+      "HDF5": "5.h5",
+      "timeout": 60,
+      "features": {
+        "s5cv": {
+          "type": "skew_ranged",
+          "weights": [
+            1
+          ]
+        },
+        "t5cv": {
+          "type": "spline_time_ranged",
+          "decay": 0,
+          "weights": [
+            1
+          ]
+        },
+        "h5cv": {
+          "type": "peak_height_ranged",
+          "weights": [
+            1
+          ]
+        }
+      }
+    },
+    "30cv": {
+      "CSV": "30.csv",
+      "isotherm": "/output/solution/unit_001/SOLUTION_OUTLET_COMP_001",
+      "HDF5": "30.h5",
+      "timeout": 60,
+      "features": {
+        "s30cv": {
+          "type": "skew_ranged",
+          "weights": [
+            1
+          ]
+        },
+        "t30cv": {
+          "type": "spline_time_ranged",
+          "decay": 0,
+          "weights": [
+            1
+          ]
+        },
+        "h30cv": {
+          "type": "peak_height_ranged",
+          "weights": [
+            1
+          ]
+        }
+      }
+    },
+    "120cv": {
+      "CSV": "120.csv",
+      "isotherm": "/output/solution/unit_001/SOLUTION_OUTLET_COMP_001",
+      "HDF5": "120.h5",
+      "timeout": 60,
+      "features": {
+        "s120cv": {
+          "type": "skew_ranged",
+          "weights": [
+            1
+          ]
+        },
+        "t120cv": {
+          "type": "spline_time_ranged",
+          "decay": 0,
+          "weights": [
+            1
+          ]
+        },
+        "h120cv": {
+          "type": "peak_height_ranged",
+          "weights": [
+            1
+          ]
+        }
+      }
+    },
+    "bt": {
+      "CSV": "bt.csv",
+      "isotherm": "/output/solution/unit_001/SOLUTION_OUTLET_COMP_001",
+      "HDF5": "bt.h5",
+      "timeout": 60,
+      "features": {
+        "bt": {
+          "type": "bt2_ranged",
+          "weights": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      }
+    }
+  }
+}

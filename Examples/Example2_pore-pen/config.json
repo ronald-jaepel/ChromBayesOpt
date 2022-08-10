@@ -1,0 +1,98 @@
+{
+  "CADETPath": "C:\\Users\\ronal\\Downloads\\cadet3.1.2-win7-x64\\cadet\\bin\\cadet-cli.exe",
+  "baseDir": "C:\\Users\\ronal\\PycharmProjects\\chrom_bayes_opt\\Examples\\Example2_pore-pen",
+  "CSV": "results.csv",
+  "using_nans": true,
+  "search_kwargs_input": {
+    "warmup": 1.0,
+    "search": 19.0,
+    "search_kappa": 0.0,
+    "thresh_c": 9
+  },
+  "seed": 3105,
+  "resultsDir": "results",
+  "timeout": 360,
+  "create_plots": false,
+  "parameters": {
+    "PAR_POROSITY": {
+      "transform": "lin",
+      "component": -1,
+      "bound": -1,
+      "experiments": [
+        "pen",
+        "60cv",
+        "30cv",
+        "5cv",
+        "10cv",
+        "120cv",
+        "bt"
+      ],
+      "location": "/input/model/unit_001/PAR_POROSITY",
+      "min": 0.2,
+      "truth": 0.5,
+      "max": 0.8,
+      "lim_min": 0.1,
+      "lim_max": 0.9
+    },
+    "FILM_DIFFUSION": {
+      "transform": "log",
+      "component": 0,
+      "bound": -1,
+      "experiments": [
+        "pen",
+        "60cv",
+        "30cv",
+        "5cv",
+        "10cv",
+        "120cv",
+        "bt"
+      ],
+      "location": "/input/model/unit_001/FILM_DIFFUSION",
+      "min": -10,
+      "truth": -5.301,
+      "max": -2,
+      "lim_min": -10,
+      "lim_max": -2
+    }
+  },
+  "experiments": {
+    "pen": {
+      "CSV": "pen.csv",
+      "isotherm": "/output/solution/unit_001/SOLUTION_OUTLET_COMP_000",
+      "HDF5": "pen.h5",
+      "timeout": 60,
+      "features": {
+        "s_pen": {
+          "type": "skew_ranged",
+          "weights": [
+            1
+          ],
+          "isotherm": "/output/solution/unit_001/SOLUTION_OUTLET_COMP_000",
+          "CSV": "pen.csv"
+        },
+        "t_pen": {
+          "type": "spline_time_ranged",
+          "decay": 0,
+          "weights": [
+            1
+          ],
+          "isotherm": "/output/solution/unit_001/SOLUTION_OUTLET_COMP_000",
+          "CSV": "pen.csv"
+        },
+        "h_pen": {
+          "type": "peak_height_ranged",
+          "weights": [
+            1
+          ],
+          "isotherm": "/output/solution/unit_001/SOLUTION_OUTLET_COMP_000",
+          "CSV": "pen.csv"
+        }
+      },
+      "feature_score_names": [
+        "h_pen-height_log",
+        "s_pen-skew",
+        "t_pen-time"
+      ]
+    }
+  }
+}

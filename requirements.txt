@@ -1,0 +1,1 @@
+addict bayesian-optimization h5py joblib matplotlib openpyxl pyDOE2 SALib scikit-learn scipy smt statsmodels
