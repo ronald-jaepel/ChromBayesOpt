@@ -93,7 +93,7 @@ class BayesianOptimizationMulti(Observable):
             self._gp.fit(self._space.params, self._space.component_target_space)
 
         # Finding argmin of the acquisition function.
-        suggestion = acq_min(
+        suggestions = acq_min(
             ac=utility_function.utility,
             gp=self._gp,
             y_min=self._space.target.min(),
@@ -103,8 +103,21 @@ class BayesianOptimizationMulti(Observable):
             n_warmup=n_warmup,
             n_iter=n_iter,
             warmup_points=self._warmup_points_for_acq_min,
-            n_returns=1
+            n_returns=n_iter
         )
+
+        suggestions_filtered = [x for x in suggestions if not list(x) in self._space.params.tolist()]
+        while len(suggestions_filtered) == 0:
+            suggestions_changed = suggestions * (1 + (np.random.random(suggestions.size) - 0.5) * 0.001)
+            for dimension in range(self._space.bounds.shape[0]):
+                suggestions_changed[:, dimension] = min(max(suggestions_changed[:, dimension],
+                                                            self._space.bounds[dimension, 0]),
+                                                        self._space.bounds[dimension, 1])
+            suggestions_filtered = [x for x in suggestions_changed if not list(x) in self._space.params.tolist()]
+
+        # print(f"Suggested point {suggestions[0]} was not unique, changing it to {suggestions_filtered[0]}")
+
+        suggestion = np.atleast_2d(suggestions_filtered[0])
 
         return self._space.array_to_params(suggestion)
 
@@ -118,7 +131,7 @@ class BayesianOptimizationMulti(Observable):
 
     def _prime_subscriptions(self):
         if not any([len(subs) for subs in self._events.values()]):
-            _logger = _get_default_logger(self._verbose)
+            _logger = _get_default_logger(self._verbose, is_constrained=False)
             self.subscribe(Events.OPTIMIZATION_START, _logger)
             self.subscribe(Events.OPTIMIZATION_STEP, _logger)
             self.subscribe(Events.OPTIMIZATION_END, _logger)

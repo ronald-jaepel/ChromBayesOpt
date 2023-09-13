@@ -56,8 +56,8 @@ def pearson_spline2(exp_time_values, exp_data_values, sim_time_values, sim_data_
             out = cr
         return out
 
-    sim_data_values_untrimmed = copy(sim_data_values)
-    exp_time_values_untrimmed = copy(exp_time_values)
+    # sim_data_values_untrimmed = copy(sim_data_values)
+    # exp_time_values_untrimmed = copy(exp_time_values)
     exp_time_values, exp_data_values, sim_time_values, sim_data_values = trim_to_time_selection(
         exp_time_values, exp_data_values, sim_time_values, sim_data_values, time_selection)
 
@@ -76,7 +76,6 @@ def pearson_spline2(exp_time_values, exp_data_values, sim_time_values, sim_data_
     roll_index = index - len(exp_time_values_ext)
     sim_time_values_rolled = roll(exp_time_values_ext, shift=int(np.ceil(roll_index)))
     sim_data_values_rolled = roll(sim_data_values_ext, shift=int(np.ceil(roll_index)))
-
 
     time_difference = exp_time_values_ext[int(len(exp_time_values_ext) / 2)] \
                       - sim_time_values_rolled[int(len(exp_time_values_ext) / 2)]
@@ -171,27 +170,32 @@ def emg_score(exp_time_values, exp_data_values, sim_time_values, sim_data_values
 
 def get_time_and_shape_score(exp_time_values, exp_data_values, sim_time_values, sim_data_values,
                              time_selection, meta_info):
-    exp_time_values_t, exp_data_values_t, sim_time_values_t, sim_data_values_t \
+    exp_time_values_trim, exp_data_values_trim, sim_time_values_trim, sim_data_values_trim \
         = trim_to_time_selection(exp_time_values, exp_data_values, sim_time_values,
                                  sim_data_values, time_selection)
 
     total_exp_area = trapz(y=exp_data_values, x=exp_time_values)
-    if time_selection is not None and time_selection is not False:
+    if time_selection is not None and time_selection is not False and time_selection[0] != 0:
         sim_data_values_pre = sim_data_values[time_selection[0] > sim_time_values]
         sim_time_values_pre = sim_time_values[time_selection[0] > sim_time_values]
         pre_gradient_sim_area = trapz(y=sim_data_values_pre, x=sim_time_values_pre)
         fraction_pre_elution = pre_gradient_sim_area / total_exp_area
+        in_gradient_sim_area = trapz(y=sim_data_values_trim, x=sim_time_values_trim)
     else:
         fraction_pre_elution = 0
-    in_gradient_sim_area = trapz(y=sim_data_values_t, x=sim_time_values_t)
-    in_gradient_exp_area = trapz(y=exp_data_values_t, x=exp_time_values_t)
+        in_gradient_sim_area = trapz(y=sim_data_values, x=sim_time_values)
+    # in_gradient_exp_area = trapz(y=exp_data_values_trim, x=exp_time_values_trim)
     fraction_in_elution = in_gradient_sim_area / total_exp_area
 
-    max_peak_exp = find_peak(exp_time_values_t, exp_data_values_t)[0]
+    max_peak_exp = find_peak(exp_time_values_trim, exp_data_values_trim)[0]
 
-    if fraction_pre_elution > 0.97 and fraction_in_elution <= 0.04:
-        return np.nan, 1
-    elif fraction_pre_elution <= 0.90 and fraction_in_elution <= 0.1:
+    # if more than 95% didn't bind: treat it as non-binding
+    if fraction_pre_elution > 0.95:
+        time_selection = [0, 1e12]
+        diff_time, pearson_score = pearson_spline2(exp_time_values, exp_data_values,
+                                                   sim_time_values, sim_data_values, time_selection)
+    # if less than 50% didn't bind and nothing eluted during the gradient: treat it as strongly-binding but slow
+    elif fraction_pre_elution < 0.5 and fraction_in_elution < 0.05:
         diff_time = max_peak_exp[0] - exp_time_values[-1]
         pearson_score = 0
     else:
@@ -376,6 +380,19 @@ def get_skewness_score(exp_time_values, exp_data_values, sim_time_values, sim_da
     return [score]
 
 
+def calculate_distribution_skew(data, time):
+    data[time <= 0] = 0
+    data[data <= 0] = 0
+    sum_of_data = np.sum(data)
+    sim_data_normalized = data / sum_of_data
+    rv = stats.rv_discrete(name="custom", values=(time, sim_data_normalized))
+    mean = rv.mean()
+    median = rv.median()
+    std = rv.std()
+    skewness = (mean - median) / std
+    return skewness
+
+
 def get_skewness_spline_score(exp_time_values, exp_data_values, sim_time_values, sim_data_values,
                               time_selection, meta_info):
     spline_sim = InterpolatedUnivariateSpline(x=sim_time_values, y=sim_data_values, ext='zeros')
@@ -391,24 +408,52 @@ def get_skewness_spline_score(exp_time_values, exp_data_values, sim_time_values,
                           / trapz(y=sim_data_values_ext, x=exp_time_values_ext) \
                           * trapz(y=exp_data_values_ext, x=exp_time_values_ext)
 
-    exp_data_values_ext[exp_data_values_ext <= 0] = 0
-    sum_of_exp_data = np.sum(exp_data_values_ext)
-    exp_data_normalized = exp_data_values_ext / sum_of_exp_data
-    rv_exp = stats.rv_discrete(name="custom", values=(exp_time_values_ext, exp_data_normalized))
-    mean_exp = rv_exp.mean()
-    median_exp = rv_exp.median()
-    std_exp = rv_exp.std()
-    skewness_exp = (mean_exp - median_exp) / std_exp
+    # restrict to time selection
+    exp_selected = exp_data_values_ext[
+        (time_selection[0] < exp_time_values_ext) & (exp_time_values_ext < time_selection[1])]
+    sim_selected = sim_data_values_ext[
+        (time_selection[0] < exp_time_values_ext) & (exp_time_values_ext < time_selection[1])]
+    time_selected = exp_time_values_ext[
+        (time_selection[0] < exp_time_values_ext) & (exp_time_values_ext < time_selection[1])]
 
-    sim_data_values_ext[sim_data_values_ext <= 0] = 0
-    sum_of_sim_data = np.sum(sim_data_values_ext)
-    sim_data_normalized = sim_data_values_ext / sum_of_sim_data
-    rv_sim = stats.rv_discrete(name="custom", values=(exp_time_values_ext, sim_data_normalized))
-    mean_sim = rv_sim.mean()
-    median_sim = rv_sim.median()
-    std_sim = rv_sim.std()
-    skewness_sim = (mean_sim - median_sim) / std_sim
+    skewness_sim = calculate_distribution_skew(sim_selected, time_selected)
+    skewness_exp = calculate_distribution_skew(exp_selected, time_selected)
     score = skewness_sim - skewness_exp
+    return [score]
+
+
+def calculate_skewness_10percent(data, time):
+    data_max = data.max()
+    index_max = data.argmax()
+    onset_10percent = (data >= data_max * 0.1).argmax()
+    offset_10percent = len(data) - 1 - (data >= data_max / 10)[::-1].argmax()
+    skewness = (time[offset_10percent] - time[index_max]) / (time[index_max] - time[onset_10percent])
+    return skewness
+
+
+def get_skewness_10percent_score(exp_time_values, exp_data_values, sim_time_values, sim_data_values,
+                                 time_selection, meta_info):
+    spline_sim = InterpolatedUnivariateSpline(x=sim_time_values, y=sim_data_values, ext='zeros')
+    spline_exp = InterpolatedUnivariateSpline(x=exp_time_values, y=exp_data_values, ext='zeros')
+
+    exp_time_values_ext = np.array(
+        np.linspace(exp_time_values[0], exp_time_values[-1], len(exp_time_values) * 100))
+    exp_time_values_ext = exp_time_values_ext[exp_time_values_ext >= 0]
+    sim_data_values_ext = spline_sim(exp_time_values_ext)
+    exp_data_values_ext = spline_exp(exp_time_values_ext)
+
+    # restrict to time selection
+    exp_selected = exp_data_values_ext[
+        (time_selection[0] < exp_time_values_ext) & (exp_time_values_ext < time_selection[1])]
+    sim_selected = sim_data_values_ext[
+        (time_selection[0] < exp_time_values_ext) & (exp_time_values_ext < time_selection[1])]
+    time_selected = exp_time_values_ext[
+        (time_selection[0] < exp_time_values_ext) & (exp_time_values_ext < time_selection[1])]
+
+    skewness_exp = calculate_skewness_10percent(exp_selected, time_selected)
+    skewness_sim = calculate_skewness_10percent(sim_selected, time_selected)
+
+    score = (skewness_sim - skewness_exp) / skewness_exp
     return [score]
 
 
@@ -586,6 +631,18 @@ def pre_gradient_elution(exp_time_values, exp_data_values, sim_time_values, sim_
     return delta
 
 
+def get_sse_nonpen_score(exp_time_values: np.ndarray, exp_data_values: np.ndarray,
+                         sim_time_values: np.ndarray, sim_data_values: np.ndarray,
+                         time_selection: tuple, meta_info: dict):
+    exp_max_value = exp_data_values.max()
+    fifty_percent_index = np.where(exp_data_values > 0.5 * exp_max_value)[0][0]
+    fifty_percent_time = exp_time_values[fifty_percent_index]
+    time_selection = (0, fifty_percent_time)
+    sse_score = get_sse_score(exp_time_values, exp_data_values, sim_time_values, sim_data_values, time_selection,
+                              meta_info)[0]
+    return [sse_score, ]
+
+
 def get_sse_score(exp_time_values: np.ndarray, exp_data_values, sim_time_values: np.ndarray, sim_data_values,
                   time_selection, meta_info):
     exp_time_values, exp_data_values, sim_time_values, sim_data_values = trim_to_time_selection(
@@ -610,14 +667,26 @@ def init_score_dict():
     score_dict["peak_height_log"] = (get_peak_height_log_score, ["height_log"])
     score_dict["peak_height"] = (get_peak_height_score, ["height"])
     score_dict["peak_height_ranged"] = (create_ranged_function(get_peak_height_score), ["height"])
+
     score_dict["spline_time"] = (get_time_score, ["time"])
     score_dict["spline_time_ranged"] = (create_ranged_function(get_time_score), ["time"])
+
     score_dict["skew"] = (get_skewness_spline_score, ["skew"])
     score_dict["skew_ranged"] = (create_ranged_function(get_skewness_spline_score), ["skew"])
+
+    score_dict["skew_10percent"] = (get_skewness_10percent_score, ["skew"])
+    score_dict["skew_10percent_ranged"] = (create_ranged_function(get_skewness_10percent_score), ["skew"])
+
     score_dict["skew_nospline"] = (get_skewness_score, ["skew_nospline"])
     score_dict["skew_nospline_ranged"] = (create_ranged_function(get_skewness_score), ["skew_nospline"])
+
     score_dict["spline_shape"] = (get_shape_score, ["shape"])
+    score_dict["spline_shape_ranged"] = (create_ranged_function(get_shape_score), ["shape"])
+
     score_dict["spline"] = (get_time_and_shape_score, ["time", "shape"])
     score_dict["pre_grad_elu"] = (pre_gradient_elution, ["delta"])
     score_dict["SSE"] = (get_sse_score, ["SSE"])
+    score_dict["SSE_ranged"] = (create_ranged_function(get_sse_score), ["SSE"])
+    score_dict["SSE_nonpen"] = (create_ranged_function(get_sse_nonpen_score), ["SSE"])
+    score_dict["SSE_nonpen_ranged"] = (create_ranged_function(get_sse_nonpen_score), ["SSE"])
     return score_dict

@@ -23,8 +23,7 @@ class TargetSpaceMulti(TargetSpace):
     # assert self.min_point()['min_val'] == y
     """
 
-    def __init__(self, target_func, pbounds, target_dims, random_state=None,
-                 interpolate_nans=False):
+    def __init__(self, target_func, pbounds, target_dims, random_state=None, interpolate_nans=False):
         """
         Parameters
         ----------
@@ -41,6 +40,7 @@ class TargetSpaceMulti(TargetSpace):
         interpolate_nans : bool, if Nan values in the space should be
             interpolated using nearest neighbour interpolation
         """
+        super().__init__(target_func, pbounds, random_state)
         self.interpolate_nans = interpolate_nans
         self.random_state = ensure_rng(random_state)
 
@@ -53,7 +53,7 @@ class TargetSpaceMulti(TargetSpace):
         # Create an array with parameters bounds
         self._bounds = np.array(
             [item[1] for item in sorted(pbounds.items(), key=lambda x: x[0])],
-            dtype=np.float
+            dtype=float
         )
 
         # preallocated memory for X and Y points
@@ -179,13 +179,13 @@ class TargetSpaceMulti(TargetSpace):
     def max(self):
         """To allow integration with max-oriented programs.
         Get negative min target value found and corresponding parametes."""
-        try:
-            res = {
-                'target': -np.nanmin(self.target),
-                'params': dict(
-                    zip(self.keys, self.params[np.nanargmin(self.target)])
-                )
-            }
-        except ValueError:
-            res = {}
+        target_max = -np.nanmin(self.target)
+        if np.isnan(target_max):
+            params_max = dict(zip(self.keys, self.params[0]))
+        else:
+            params_max = dict(zip(self.keys, self.params[np.nanargmin(self.target)]))
+        res = {
+            'target': target_max,
+            'params': params_max
+        }
         return res

@@ -32,9 +32,11 @@ def turn_parameter_list_to_dict(json_dict):
                     parameter["name"] = parameter["location"].split("/")[-1] + "_c" + str(
                         parameter["component"])
             if parameter["lim_min"] > parameter["min"]:
-                parameter["lim_min"] = parameter["min"]
+                raise ValueError(f"Parameter {parameter['name']} lim_min was above the min.")
+                # parameter["lim_min"] = parameter["min"]
             if parameter["lim_max"] < parameter["max"]:
-                parameter["lim_max"] = parameter["max"]
+                raise ValueError(f"Parameter {parameter['name']} lim_max was below the max.")
+                # parameter["lim_max"] = parameter["max"]
         if not len({param["name"] for param in json_dict["parameters"]}) == len(
                 json_dict["parameters"]):
             raise ValueError(f"names for parameters are not unique in {json_dict.parameters}")
@@ -79,6 +81,8 @@ def turn_experiment_list_to_dict(json_dict):
                 feature.isotherm = exp.isotherm
             if not "CSV" in feature:
                 feature.CSV = exp.CSV
+            if "time_selection" in exp and "time_selection" not in feature:
+                feature.time_selection = exp.time_selection
     return json_dict
 
 
@@ -154,11 +158,11 @@ def check_boundaries(json_dict, res_space, score_threshold_factor=None, score_th
         # if new_max == new_min:
         #     new_max += abs(new_max/10)
         #     new_min -= abs(new_min/10)
-        if new_min > param_dict.lim_min:
+        if new_min >= param_dict.lim_min:
             # message += f"shifting min from {round(param_dict.min, 3)} " \
             #            f"to {round(new_min, 3)}\r\n"
             param_dict.min = new_min
-        if new_max < param_dict.lim_max:
+        if new_max <= param_dict.lim_max:
             # message += f"shifting max from {round(param_dict.max, 3)} " \
             #            f"to {round(new_max, 3)}\r\n"
             param_dict.max = new_max
@@ -873,7 +877,7 @@ def scatter_all_dims(bounds_dict, x_full, y_full, y_std_full, res_y, res_params,
     axes = np.atleast_2d(axes)
 
     try:
-        zoomed_in_y_max = min(sorted(res_y)[-40], y_min * 2)
+        zoomed_in_y_max = sorted(res_y)[30]  # min(sorted(res_y)[-40], y_min * 2)
         zoomed_out_y_max = res_y.max()
     except IndexError:
         zoomed_in_y_max = y_min * 3
@@ -1019,7 +1023,7 @@ def plot(itera, optimizer, gps, bounds_dict, gp_name_list, json_dict, slice_poin
                     axes[i, j].scatter(res_params[:, i], res_y, c=1 / res_y, zorder=20,
                                        edgecolors='black', linewidth=0.5)
                     try:
-                        zoomed_in_y_max = min(sorted(res_y)[-40], y_min * 2)
+                        zoomed_in_y_max = sorted(res_y)[30]  # min(sorted(res_y)[-40], y_min * 2)
                     except IndexError:
                         zoomed_in_y_max = y_min * 3
                     axes[i, j].set_ylim(y_min * 0.9, zoomed_in_y_max)
@@ -1054,7 +1058,7 @@ def plot(itera, optimizer, gps, bounds_dict, gp_name_list, json_dict, slice_poin
                     # axes[i, j].set_yscale("log")
                     axes[i, j].scatter(res_params[:, i], res_y, c=1 / res_y, zorder=20)
                     try:
-                        zoomed_in_y_max = min(sorted(res_y)[-40], y_min * 2)
+                        zoomed_in_y_max = sorted(res_y)[30]  # min(sorted(res_y)[-40], y_min * 2)
                     except IndexError:
                         zoomed_in_y_max = y_min * 3
                     # axes[i, j].set_ylim(res_y.min() * 0.9, res_y.max()*1.1)
@@ -1115,19 +1119,18 @@ def plot(itera, optimizer, gps, bounds_dict, gp_name_list, json_dict, slice_poin
     return
 
 
-
 def load_time_df(json_dict, call_starttime):
     time_df = pd.read_csv(json_dict.time_file_path, sep=";", index_col=0)
+    time_df = time_df.fillna(0)
     time_df.loc[:, "suggest"] = time_df.loc[:, "suggest"].apply(
         lambda x: timedelta(seconds=x))
     time_df.loc[:, "target"] = time_df.loc[:, "target"].apply(
         lambda x: timedelta(seconds=x))
     time_df.loc[:, "fit"] = time_df.loc[:, "fit"].apply(
         lambda x: timedelta(seconds=x))
-    time_df = time_df.append(pd.Series(
-        [-1, call_starttime, timedelta(0), timedelta(0), timedelta(0)],
-        index=["k", "time", "suggest", "target", "fit"]),
-        ignore_index=True)
+    time_df = pd.concat([time_df, pd.Series([-1, call_starttime, timedelta(0), timedelta(0), timedelta(0)],
+                                            index=["k", "time", "suggest", "target", "fit"])],
+                        ignore_index=True)
     return time_df
 
 

@@ -3,8 +3,10 @@ from copy import deepcopy
 from shutil import rmtree
 from sys import gettrace
 
+import warnings
 import numpy as np
 import pandas as pd
+import scipy as sp
 import os
 from os.path import join
 from addict import Dict
@@ -32,7 +34,7 @@ def search_loop(meta_dict, close_figures=True, first_start=False, **kwargs):
         call_starttime = datetime.now()
         if first_start:
             meta_dict.starttime = str(call_starttime)
-        np.warnings.filterwarnings('ignore')
+        warnings.filterwarnings('ignore')
 
         """ Initialization of metadata """
 
@@ -128,12 +130,16 @@ def search_loop(meta_dict, close_figures=True, first_start=False, **kwargs):
             optimizer.fit_gp()
             k = _res_space.index.max()
             if "only_plot" in kwargs and kwargs["only_plot"]:
+                # if True:
+                print("creating plots")
                 _res_space = _res_space.sort_values("st", ascending=True)
                 next_point = dict(_res_space.iloc[0, :len(meta_dict.parameters)])
                 uuid = _res_space.index[0]
                 _ = target_function(uuid=str(uuid), best_score=optimizer.min["target"],
                                     **next_point)
                 plot_sim(str(uuid), meta_dict, plot_deriv=True)
+                plot(k, optimizer, gps, bounds_dict, gp_name_list, meta_dict,
+                     slice_point=optimizer.min["params"], close_figures=close_figures)
                 rmtree(meta_dict.sim_tmp_base_path)
                 os.makedirs(meta_dict.sim_tmp_base_path)
                 return meta_dict, False
@@ -154,17 +160,22 @@ def search_loop(meta_dict, close_figures=True, first_start=False, **kwargs):
                                            results_csv_file)
             optimizer.fit_gp()
             k = _res_space.index.max() + 1
-            time_df = time_df.append(pd.Series([k, datetime.now(), 0, 0, 0],
-                                               index=["k", "time", "suggest", "target", "fit"]),
-                                     ignore_index=True)
+            time_df = pd.concat([time_df, pd.Series([k, datetime.now(), 0, 0, 0],
+                                                    index=["k", "time", "suggest", "target", "fit"])],
+                                ignore_index=True)
             save_time_df(time_df, meta_dict)
             if meta_dict.create_plots:
                 plot(k, optimizer, gps, bounds_dict, gp_name_list, meta_dict,
                      slice_point=optimizer.min["params"], close_figures=close_figures)
-            time_df = time_df.append(pd.Series([k + 0.5, datetime.now(), 0, 0, 0],
-                                               index=["k", "time", "suggest", "target", "fit"]),
-                                     ignore_index=True)
+            time_df = pd.concat([time_df, pd.Series([k + 0.5, datetime.now(), 0, 0, 0],
+                                                    index=["k", "time", "suggest", "target", "fit"])],
+                                ignore_index=True)
             save_time_df(time_df, meta_dict)
+
+
+        if kwargs["run_least_squares"]:
+            best_params = _res_space.iloc[0, :len(bounds_dict)].values
+            least_sqr_results = sp.optimize.least_squares(target_function, best_params, bounds=bounds_array)
 
         """ Stepwise search"""
 
@@ -189,14 +200,15 @@ def search_loop(meta_dict, close_figures=True, first_start=False, **kwargs):
                 return meta_dict, False
             k += 1
 
+
         """ Preparation for next iteration """
 
         if meta_dict.create_plots:
             plot(k, optimizer, gps, bounds_dict, gp_name_list, meta_dict,
                  slice_point=optimizer.min["params"], close_figures=close_figures)
-        time_df = time_df.append(pd.Series([k + 0.5, datetime.now(), 0, 0, 0],
-                                           index=["k", "time", "suggest", "target", "fit"]),
-                                 ignore_index=True)
+            time_df = pd.concat([time_df, pd.Series([k + 0.5, datetime.now(), 0, 0, 0],
+                                                    index=["k", "time", "suggest", "target", "fit"])],
+                                ignore_index=True)
         save_time_df(time_df, meta_dict)
 
         meta_dict = check_boundaries(meta_dict, _res_space,
@@ -204,10 +216,9 @@ def search_loop(meta_dict, close_figures=True, first_start=False, **kwargs):
         # this dumps the json file and creates a "log" copy of the json
         init_directories(meta_dict)
         logger.info("restarting search with updated boundaries")
-        time_df = time_df.append(pd.Series([-2, datetime.now(), 0, 0, 0],
-                                           index=["k", "time", "suggest", "target",
-                                                  "fit"]),
-                                 ignore_index=True)
+        time_df = pd.concat([time_df, pd.Series([-2, datetime.now(), 0, 0, 0],
+                                                index=["k", "time", "suggest", "target", "fit"])],
+                            ignore_index=True)
         save_time_df(time_df, meta_dict)
         rmtree(meta_dict.sim_tmp_base_path)
         os.makedirs(meta_dict.sim_tmp_base_path)
@@ -281,7 +292,7 @@ def search(config_file_path):
                                           first_start=True,
                                           **search_kwargs)
 
-    for _ in range(4):
+    for _ in range(15):
         if rerun_needed:
             meta_dict, rerun_needed = search_loop(meta_dict,
                                                   first_start=False,

@@ -612,10 +612,10 @@ def search_step(uuid, kappa, optimizer, target_function, time_df=None, json_dict
               f"Target took {target_duration}, " \
               f"GP fitting took {fitting_duration}, Sum took {sum_duration}"
     if time_df is not None:
-        time_df = time_df.append(pd.Series([uuid, datetime.now(), suggest_duration, target_duration,
-                                            fitting_duration],
-                                           index=["k", "time", "suggest", "target", "fit"]),
-                                 ignore_index=True)
+        time_df = pd.concat([time_df, pd.Series([uuid, datetime.now(), suggest_duration, target_duration,
+                                                 fitting_duration],
+                                                index=["k", "time", "suggest", "target", "fit"])],
+                            ignore_index=True)
         save_time_df(time_df, json_dict)
     # print(summary)
     logger = getLogger(json_dict.resultsDir)

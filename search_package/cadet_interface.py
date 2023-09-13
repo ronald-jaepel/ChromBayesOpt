@@ -368,7 +368,7 @@ def plot_sim(uuid, json_dict, plot_deriv=False):
         cols, rows = find_squarest_arrangement(plots_required)
 
     i = -1
-    fig, axes = plt.subplots(cols, rows, figsize=(6 * cols, 5 * rows))
+    fig, axes = plt.subplots(cols, rows, figsize=(5 * rows, 4 * cols))
     try:
         axes = axes.flatten()
     except AttributeError:
@@ -399,8 +399,8 @@ def plot_sim(uuid, json_dict, plot_deriv=False):
                 if "cv" in feature_name and sim.root.meta.time_offset_delta != {}:
                     sim_time_values = sim_time_values + sim.root.meta.time_offset_delta
 
-                time_selection = get_time_selection(feature, target[:, 0], target[:, 1])
-
+                # time_selection = get_time_selection(feature, target[:, 0], target[:, 1])
+                time_selection = 0, 1e12
                 sim_results = sim_results[(time_selection[0] < sim_time_values) &
                                           (sim_time_values < time_selection[1])]
                 sim_time_values = sim_time_values[(time_selection[0] < sim_time_values) &
@@ -420,7 +420,7 @@ def plot_sim(uuid, json_dict, plot_deriv=False):
                              sim.root.output.solution.unit_001.solution_outlet_comp_000,
                              '--', label="salt")
                 experiment_scores = [f"{fn}: {np.round(sim.root.meta.score_batches[fn], 3)}"
-                                     for fn, _ in sorted(features.items())]
+                                     for fn, _ in sorted(experiment.features.items())]
                 ax.set_title(" ".join(experiment_scores))
                 lines, labels = ax.get_legend_handles_labels()
                 lines2, labels2 = ax2.get_legend_handles_labels()
