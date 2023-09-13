@@ -172,11 +172,6 @@ def search_loop(meta_dict, close_figures=True, first_start=False, **kwargs):
                                 ignore_index=True)
             save_time_df(time_df, meta_dict)
 
-
-        if kwargs["run_least_squares"]:
-            best_params = _res_space.iloc[0, :len(bounds_dict)].values
-            least_sqr_results = sp.optimize.least_squares(target_function, best_params, bounds=bounds_array)
-
         """ Stepwise search"""
 
         if "search_kappa" in kwargs:
@@ -199,7 +194,6 @@ def search_loop(meta_dict, close_figures=True, first_start=False, **kwargs):
                 end_of_search(sim_templates, logger, meta_dict, call_starttime)
                 return meta_dict, False
             k += 1
-
 
         """ Preparation for next iteration """
 
