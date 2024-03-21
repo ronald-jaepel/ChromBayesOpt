@@ -201,7 +201,11 @@ def run_cadet(exp_name, sim_file_name, template_sim, json_dict):
                 if param_dtype != np.ndarray:
                     raise ValueError(
                         f"Component specified for paramter that has no component specific values\n{parameter}")
-                simulation[parameter.location][parameter.component] = parameter.value
+                try:
+                    simulation[parameter.location][parameter.component] = parameter.value
+                except Exception:
+                    print(parameter)
+                    print(simulation)
 
     simulation.save()
 
@@ -353,6 +357,19 @@ def get_time_selection(feature, target_x, target_y):
 
 
 def plot_sim(uuid, json_dict, plot_deriv=False):
+    plotted_sims_folder = f'{json_dict["fig_base_path"]}_sims'
+    # cleanup old h5 files, only keep the very last best-off sim files
+    if os.path.exists(plotted_sims_folder):
+        file_list = os.listdir(plotted_sims_folder)
+        for file_name in file_list:
+            if file_name.endswith(".h5"):
+                try:
+                    os.remove(os.path.join(plotted_sims_folder, file_name))
+                except PermissionError as e:
+                    print(e)
+    else:
+        os.makedirs(plotted_sims_folder)
+
     plt.ioff()
     plots_required = 0
     for experiment in json_dict.experiments.values():
@@ -389,7 +406,7 @@ def plot_sim(uuid, json_dict, plot_deriv=False):
                 sim = Cadet()
                 sim.filename = f'{json_dict["sim_tmp_base_path"]}/{uuid}_{exp_name}.h5'
                 sim.load()
-                # sim.filename = f'{json_dict["fig_base_path"]}_sims/{uuid}_{exp_name}.h5'
+                # sim.filename = os.path.join(plotted_sims_folder, f'{uuid}_{exp_name}.h5')
                 # sim.save()
 
                 sim_results = sim[feature.isotherm]
@@ -469,82 +486,87 @@ def load_data_target(data_target_filename, root_dir):
     return data_target
 
 
-def preapply_exp_info(exp_name, template, datatarget, json_dict, score_dict):
+def preapply_exp_info(exp_name, template, datatarget, json_dict_input, score_dict):
     def wrapper_function(uuid, best_score=999, **kwargs_input):
-        json_dict_internal = deepcopy(json_dict)
+        json_dict = deepcopy(json_dict_input)
         # set kwags parameters into internal json_dict
-        for par, val in kwargs_input.items():
-            if par == "TOT_POROSITY":
+        for parameter_name, parameter_value in kwargs_input.items():
+            parameter_info = json_dict["parameters"][parameter_name]
+            parameter_transform = transforms_dict[parameter_info["transform"]]
+            parameter_value = parameter_transform(parameter_value)
+
+            if parameter_name == "TOT_POROSITY":
                 if "COL_POROSITY" in kwargs_input:
-                    col_transform = json_dict_internal["parameters"]["COL_POROSITY"]["transform"]
-                    col_poros = transforms_dict[col_transform](kwargs_input["COL_POROSITY"])
-                    parameter_transform = json_dict_internal["parameters"][par]["transform"]
-                    val = transforms_dict[parameter_transform](val)
-                    par_poros = (val - col_poros) / (1 - col_poros)
-                    json_dict_internal["parameters"]["PAR_POROSITY"]["value"] = par_poros
+                    col_transform = transforms_dict[json_dict["parameters"]["COL_POROSITY"]["transform"]]
+                    col_poros = col_transform(kwargs_input["COL_POROSITY"])
+                    par_poros = (parameter_value - col_poros) / (1 - col_poros)
+                    json_dict["parameters"]["PAR_POROSITY"]["value"] = par_poros
+
                 elif "PAR_POROSITY" in kwargs_input:
-                    par_transform = json_dict_internal["parameters"]["PAR_POROSITY"]["transform"]
-                    par_poros = transforms_dict[par_transform](kwargs_input["PAR_POROSITY"])
-                    parameter_transform = json_dict_internal["parameters"][par]["transform"]
-                    val = transforms_dict[parameter_transform](val)
-                    col_poros = (val - par_poros) / (1 - par_poros)
-                    json_dict_internal["parameters"]["COL_POROSITY"]["value"] = col_poros
+                    par_transform = transforms_dict[json_dict["parameters"]["PAR_POROSITY"]["transform"]]
+                    par_poros = par_transform(kwargs_input["PAR_POROSITY"])
+                    col_poros = (parameter_value - par_poros) / (1 - par_poros)
+                    json_dict["parameters"]["COL_POROSITY"]["value"] = col_poros
                 else:
                     raise ValueError("TOT_POROSITY must be set with either PAR_POROSITY or "
                                      "COL_POROSITY")
 
-            if "KEQ" in par:
-                isotherm_prefix = par.split("KEQ")[0]
+            if "KEQ" in parameter_name and "KEQ_LIN" not in parameter_name:
+                isotherm_prefix = parameter_name.split("KEQ")[0]
                 try:
-                    component = par.split("_c")[-1]
+                    component = parameter_name.split("_c")[-1]
                 except Exception as e:
                     raise Exception("KEQ was given without a proper component") from e
+
                 ka_name = f"{isotherm_prefix}KA_c{component}"
                 kd_name = f"{isotherm_prefix}KD_c{component}"
+
+                keq_value = parameter_value
+
                 if any(ka_name in kwarg for kwarg in kwargs_input):
-                    ka_transform = json_dict_internal["parameters"][ka_name]["transform"]
-                    ka = transforms_dict[ka_transform](kwargs_input[ka_name])
-                    keq_transform = json_dict_internal["parameters"][par]["transform"]
-                    keq = transforms_dict[keq_transform](val)
-                    kd = ka / keq
-                    json_dict_internal["parameters"][kd_name] = \
-                        deepcopy(json_dict_internal["extra_parameter_infos"][kd_name])
-                    json_dict_internal["parameters"][kd_name]["value"] = kd
+                    # IF KA was given as well as KEQ
+                    ka_transform = transforms_dict[json_dict["parameters"][ka_name]["transform"]]
+                    ka_value = ka_transform(kwargs_input[ka_name])
+                    kd_value = ka_value / keq_value
+                    json_dict["parameters"][kd_name] = deepcopy(json_dict["extra_parameter_infos"][kd_name])
+                    json_dict["parameters"][kd_name]["value"] = kd_value
                 elif any(kd_name in kwarg for kwarg in kwargs_input):
-                    kd_transform = json_dict_internal["parameters"][kd_name]["transform"]
-                    kd = transforms_dict[kd_transform](kwargs_input[kd_name])
-                    keq_transform = json_dict_internal["parameters"][par]["transform"]
-                    keq = transforms_dict[keq_transform](val)
-                    ka = kd * keq
-                    json_dict_internal["parameters"][ka_name] = \
-                        deepcopy(json_dict_internal["extra_parameter_infos"][ka_name])
-                    json_dict_internal["parameters"][ka_name]["value"] = ka
+                    # IF KD was given as well as KEQ
+                    kd_transform = json_dict["parameters"][kd_name]["transform"]
+                    kd_value = transforms_dict[kd_transform](kwargs_input[kd_name])
+                    ka_value = kd_value * keq_value
+                    json_dict["parameters"][ka_name] = deepcopy(json_dict["extra_parameter_infos"][ka_name])
+                    json_dict["parameters"][ka_name]["value"] = ka_value
                 else:
-                    keq_transform = json_dict_internal["parameters"][par]["transform"]
-                    keq = transforms_dict[keq_transform](val)
-                    kd = 1e3 / keq
-                    json_dict_internal["parameters"][kd_name] = \
-                        deepcopy(json_dict_internal["extra_parameter_infos"][kd_name])
-                    json_dict_internal["parameters"][kd_name]["value"] = kd
-                    json_dict_internal["parameters"][ka_name] = \
-                        deepcopy(json_dict_internal["extra_parameter_infos"][kd_name])
-                    json_dict_internal["parameters"][ka_name]["location"] = \
-                        json_dict_internal["parameters"][ka_name]["location"].replace("KD", "KA")
-                    json_dict_internal["parameters"][ka_name]["value"] = 1e3
+                    # IF ONLY KEQ was given
+                    ka_location = parameter_info.location.replace("KD", "KA")
+                    kd_location = parameter_info.location.replace("KA", "KD")
+
+                    if "KA" in parameter_info.location:
+                        # KEQ points to KA. We should read out KD, and set KA accordingly
+                        kd_value = template[kd_location][parameter_info.component]
+                        ka_value = kd_value * keq_value
+                        json_dict["parameters"][parameter_name]["value"] = ka_value
+
+                    elif "KD" in parameter_info.location:
+                        # KEQ points to KD. We should read out KA, and set KD accordingly
+                        ka_value = template[ka_location][parameter_info.component]
+                        kd_value = ka_value / keq_value
+                        json_dict["parameters"][parameter_name]["value"] = kd_value
+                    else:
+                        raise ValueError("KEQ parameter wasn't given a location pointing to either KA or KD.")
             else:
-                parameter_transform = json_dict_internal["parameters"][par]["transform"]
-                val = transforms_dict[parameter_transform](val)
-                json_dict_internal["parameters"][par]["value"] = val
+                json_dict["parameters"][parameter_name]["value"] = parameter_value
 
         # used to store sims in sim_storage
         # experimental feature
         space_descriptor = str(
             np.round(np.concatenate(list(kwargs_input.values()), axis=-1), 4)).replace("  ", " ")
-        json_dict_internal["fig_path"] = join(json_dict_internal["fig_base_path"],
-                                              space_descriptor + "_" + exp_name + ".png")
+        json_dict["fig_path"] = join(json_dict["fig_base_path"],
+                                     space_descriptor + "_" + exp_name + ".png")
 
         score_results = prepare_and_run_cadet(uuid, exp_name, template, datatarget,
-                                              json_dict_internal,
+                                              json_dict,
                                               score_dict, best_score)
         """Reshape your data either using array.reshape(-1, 1) if
         your data has a single feature or array.reshape(1, -1)

@@ -1,16 +1,17 @@
 import json
-from copy import deepcopy
+# from copy import deepcopy
 from shutil import rmtree
-from sys import gettrace
+# from sys import gettrace
 
 import warnings
 import numpy as np
 import pandas as pd
-import scipy as sp
+import matplotlib.pyplot as plt
+# import scipy as sp
 import os
 from os.path import join
 from addict import Dict
-from joblib import Parallel, delayed
+# from joblib import Parallel, delayed
 from datetime import datetime, timedelta
 import traceback
 import logging
@@ -127,6 +128,13 @@ def search_loop(meta_dict, close_figures=True, first_start=False, **kwargs):
             optimizer, _res_space = load_previous_results(optimizer, results_csv_file,
                                                           bounds_dict, index_limit=None,
                                                           return_res_space=True)
+            if first_start:
+                meta_dict = check_boundaries(meta_dict, _res_space,
+                                             score_threshold_count=int(kwargs["thresh_c"]))
+                # this dumps the json file and creates a "log" copy of the json
+                init_directories(meta_dict)
+                return meta_dict, True
+
             optimizer.fit_gp()
             k = _res_space.index.max()
             if "only_plot" in kwargs and kwargs["only_plot"]:
@@ -154,7 +162,7 @@ def search_loop(meta_dict, close_figures=True, first_start=False, **kwargs):
                 logger.info(message)
         if initialization_necessary:
             optimizer = init_in_bounds(meta_dict, bounds_array, bounds_dict,
-                                       target_function, optimizer, factorial=False)
+                                       target_function, optimizer)
 
             _res_space = collect_res_space(optimizer, bounds_dict, gp_name_list,
                                            results_csv_file)
@@ -285,12 +293,13 @@ def search(config_file_path):
     meta_dict, rerun_needed = search_loop(meta_dict,
                                           first_start=True,
                                           **search_kwargs)
-
+    plt.close("all")
     for _ in range(15):
         if rerun_needed:
             meta_dict, rerun_needed = search_loop(meta_dict,
                                                   first_start=False,
                                                   **search_kwargs)
+            plt.close("all")
 
     return
 
