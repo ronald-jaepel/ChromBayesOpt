@@ -2,6 +2,8 @@ import shutil
 import traceback
 from datetime import datetime, timedelta
 import json
+from shutil import rmtree
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from logging import getLogger
@@ -458,7 +460,7 @@ def compile_feature_score_names_list(json_dict, score_dict):
             if feature.type not in score_dict:
                 raise ValueError(f"No score of type {feature.type} in score dictionary.")
             score_name_list = score_dict[feature.type][1]
-            score_name_list = [f"{featurename}-{score_name}" for score_name in score_name_list]
+            score_name_list = [f"{exp_name}-{featurename}-{score_name}" for score_name in score_name_list]
             feature_score_name_list.extend(score_name_list)
         exp_dict["feature_score_names"] = feature_score_name_list
     return json_dict
@@ -494,9 +496,10 @@ def calculate_mask(json_dict):
     return mask
 
 
-def init_in_bounds(json_dict, bounds, bounds_dict, target_function, optimizer, factorial=False,
-                   previous_k=1):
-    # if on data has been fitted yet this
+def init_in_bounds(json_dict, bounds, bounds_dict, target_function, optimizer, previous_k=1):
+    """
+    Initialize the search space with a latin hypercube sampling
+    """
     remaining_x = optimizer._gp.filtered_x_shape[0]
     if remaining_x is None:
         n_init = json_dict["warmup_points"]
@@ -512,17 +515,30 @@ def init_in_bounds(json_dict, bounds, bounds_dict, target_function, optimizer, f
             for idx, key in enumerate(sorted(bounds_dict))}
            for k in range(samples.shape[0])]
 
-    res_list = [target_function(uuid=previous_k + i, **que[i]) for i in range(len(que))]
+    def chunks(lst, n):
+        """Yield successive n-sized chunks from lst."""
+        for i in range(0, len(lst), n):
+            yield lst[i:i + n]
 
-    if "target" in optimizer.min:
-        previous_best = optimizer.min["target"]
-    else:
+    que_chunks_size = 20
+    que_chunks = chunks(que, que_chunks_size)
+
+    if "target" not in optimizer.min:
         previous_best = 100
-    for i, (point, target) in enumerate(zip(que, res_list)):
-        optimizer.register(params=point, target=target)
-        if target[-1] < previous_best and json_dict.create_plots:
-            previous_best = target[-1]
-            plot_sim(str(previous_k + i), json_dict)
+    else:
+        previous_best = optimizer.min["target"]
+
+    k = previous_k + 1
+    for sub_que in que_chunks:
+        for point in sub_que:
+            target = target_function(uuid=k, **point)
+            optimizer.register(params=point, target=target)
+            if json_dict.create_plots and target[-1] < previous_best:
+                previous_best = target[-1]
+                plot_sim(str(k), json_dict)
+            k += 1
+        rmtree(json_dict.sim_tmp_base_path)
+        os.makedirs(json_dict.sim_tmp_base_path)
 
     return optimizer
 
@@ -680,7 +696,9 @@ def surface_plot(slice_point, optimizer, utility, bounds_dict, gps, gp_name_list
             x = np.concatenate(array_list, axis=1)
 
             y_mean, y_std = gps.predict_individual_gp(x, box_i, return_std=True)
-            vmax = max(np.abs(y_mean.min()), y_mean.max()) / 2
+            vmax = max(np.abs(y_mean.min()), y_mean.max())
+            # To increase the overall saturation of plots
+            vmax = vmax / 1.2
 
             box_r = box_i // box_cols
             box_c = box_i % box_cols
@@ -695,9 +713,9 @@ def surface_plot(slice_point, optimizer, utility, bounds_dict, gps, gp_name_list
             axes[r, c].set_xlim(auto=False)
             axes[r, c].set_ylim(auto=False)
             contr = axes[r + 1, c].contourf(x0_g, x1_g, y_std.reshape(x0_g.shape), 40,
-                                            cmap="binary", vmin=0)
+                                            cmap="binary", vmin=0, vmax=vmax*0.5)
             fig.colorbar(contr, ax=axes[r + 1, c],
-                         ticks=sorted([y_std.min(), y_std.mean(), y_std.max(), vmax]))
+                         ticks=sorted([0, y_std.min(), y_std.mean(), y_std.max(), vmax*0.5]))
             axes[r + 1, c].set_xlim(auto=False)
             axes[r + 1, c].set_ylim(auto=False)
             axes[r, c].set_xlabel(dim0)
@@ -708,13 +726,13 @@ def surface_plot(slice_point, optimizer, utility, bounds_dict, gps, gp_name_list
 
             contr = axes2[r, c].contourf(x0_g, x1_g, y_mean.reshape(x0_g.shape), 40,
                                          cmap="seismic",
-                                         vmin=-2, vmax=2)
+                                         vmin=-1, vmax=1)
             fig.colorbar(contr, ax=axes2[r, c],
                          ticks=sorted([y_mean.min(), 0, y_mean.mean(), y_mean.max()]))
             axes2[r, c].set_xlim(auto=False)
             axes2[r, c].set_ylim(auto=False)
             contr = axes2[r + 1, c].contourf(x0_g, x1_g, y_std.reshape(x0_g.shape), 40,
-                                             cmap="binary", vmin=0, vmax=1.5)
+                                             cmap="binary", vmin=0, vmax=0.5)
             fig.colorbar(contr, ax=axes2[r + 1, c],
                          ticks=sorted([y_std.min(), y_std.mean(), y_std.max(), vmax]))
             axes2[r + 1, c].set_xlim(auto=False)
@@ -860,10 +878,10 @@ def surface_plot(slice_point, optimizer, utility, bounds_dict, gps, gp_name_list
     fig2.tight_layout(rect=[0, 0, 1, 0.97])
     fig.savefig(join(json_dict["fig_base_path"],
                      f"surface_{datetime.now().strftime('%Y-%m-%d %H-%M')}_{itera}.png"),
-                dpi=300)
+                dpi=150)
     fig2.savefig(join(json_dict["fig_base_path"],
                       f"surface_scale_{datetime.now().strftime('%Y-%m-%d %H-%M')}_{itera}.png"),
-                 dpi=300)
+                 dpi=150)
     if close_figures:
         plt.close(fig)
         plt.close(fig2)
@@ -911,7 +929,7 @@ def scatter_all_dims(bounds_dict, x_full, y_full, y_std_full, res_y, res_params,
     plt.tight_layout()
     plt.savefig(join(json_dict["fig_base_path"],
                      f"scatter__all_{datetime.now().strftime('%Y-%m-%d %H-%M')}_{itera}.png"),
-                dpi=300)
+                dpi=100)
     if close_figures:
         plt.close(fig)
 
@@ -1022,11 +1040,7 @@ def plot(itera, optimizer, gps, bounds_dict, gp_name_list, json_dict, slice_poin
                 if i == j:
                     axes[i, j].scatter(res_params[:, i], res_y, c=1 / res_y, zorder=20,
                                        edgecolors='black', linewidth=0.5)
-                    try:
-                        zoomed_in_y_max = sorted(res_y)[30]  # min(sorted(res_y)[-40], y_min * 2)
-                    except IndexError:
-                        zoomed_in_y_max = y_min * 3
-                    axes[i, j].set_ylim(y_min * 0.9, zoomed_in_y_max)
+                    axes[i, j].set_yscale("log")
                     axes[i, j].set_ylabel("score")
                     axes[i, j].set_xlabel(sorted(bounds_dict)[i])
                 else:
@@ -1037,16 +1051,22 @@ def plot(itera, optimizer, gps, bounds_dict, gp_name_list, json_dict, slice_poin
         plt.tight_layout()
         plt.savefig(join(json_dict["fig_base_path"],
                          f"scatter_pairs_{datetime.now().strftime('%Y-%m-%d %H-%M')}_{itera}.png"),
-                    dpi=300)
+                    dpi=100)
 
         for i in range(len(bounds_dict)):
             for j in range(len(bounds_dict)):
+                if i == j:
+                    axes[i, j].set_yscale("linear")
+                    zoomed_in_y_max = sorted(res_y)[int(len(res_y) * 0.5)]
+                    y_range = zoomed_in_y_max - y_min
+                    y_lower_limit = y_min - y_range * 0.05
+                    axes[i, j].set_ylim(y_lower_limit, zoomed_in_y_max + y_range * 0.05)
                 if i != j:
                     axes[i, j].set_xlim(bounds_dict[sorted(bounds_dict)[j]])
                     axes[i, j].set_ylim(bounds_dict[sorted(bounds_dict)[i]])
         plt.savefig(join(json_dict["fig_base_path"],
                          f"scatter_pairs_bounds_{datetime.now().strftime('%Y-%m-%d %H-%M')}_{itera}.png"),
-                    dpi=300)
+                    dpi=100)
 
         """ plot slices """
         fig, axes = plt.subplots(len(bounds_dict), len(bounds_dict),
@@ -1057,12 +1077,11 @@ def plot(itera, optimizer, gps, bounds_dict, gp_name_list, json_dict, slice_poin
                 if i == j:
                     # axes[i, j].set_yscale("log")
                     axes[i, j].scatter(res_params[:, i], res_y, c=1 / res_y, zorder=20)
-                    try:
-                        zoomed_in_y_max = sorted(res_y)[30]  # min(sorted(res_y)[-40], y_min * 2)
-                    except IndexError:
-                        zoomed_in_y_max = y_min * 3
+                    zoomed_in_y_max = sorted(res_y)[int(len(res_y) * 0.5)]
                     # axes[i, j].set_ylim(res_y.min() * 0.9, res_y.max()*1.1)
-                    axes[i, j].set_ylim(res_y.min() * 0.9, zoomed_in_y_max)
+                    y_range = zoomed_in_y_max - y_min
+                    y_lower_limit = y_min - y_range * 0.05
+                    axes[i, j].set_ylim(y_lower_limit, zoomed_in_y_max + y_range * 0.05)
                     axes[i, j].set_ylabel("score")
                     axes[i, j].set_xlabel(sorted(bounds_dict)[i])
                     axes[i, j].set_xlim(bounds_dict[sorted(bounds_dict)[j]])
@@ -1093,7 +1112,7 @@ def plot(itera, optimizer, gps, bounds_dict, gp_name_list, json_dict, slice_poin
         plt.tight_layout()
         plt.savefig(join(json_dict["fig_base_path"],
                          f"slices_{datetime.now().strftime('%Y-%m-%d %H-%M')}_{itera}.png"),
-                    dpi=300)
+                    dpi=150)
         if close_figures:
             plt.close(fig)
 
