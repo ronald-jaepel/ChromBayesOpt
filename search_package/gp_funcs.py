@@ -1,17 +1,23 @@
 import traceback
-import numpy as np
 from datetime import datetime
-from joblib import Parallel, delayed
 from logging import getLogger
-import pandas as pd
-from sklearn.gaussian_process.kernels import RationalQuadratic
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.utils import check_random_state
-from sklearn.gaussian_process.kernels import Kernel, Hyperparameter, _approx_fprime
 
+import numpy as np
+import pandas as pd
+import torch
+from botorch.fit import fit_gpytorch_mll
+from botorch.models.gp_regression import SingleTaskGP
+from botorch.models.transforms import Normalize, Standardize
+from gpytorch import ExactMarginalLogLikelihood
+from joblib import Parallel, delayed
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import Kernel, Hyperparameter, _approx_fprime
+from sklearn.gaussian_process.kernels import RationalQuadratic
+from sklearn.utils import check_random_state
+
+from search_package.bayes_opt_custom import UtilityFunction
 from search_package.cadet_interface import plot_sim
 from search_package.helper_functions import save_time_df
-from search_package.bayes_opt_custom import UtilityFunction
 
 
 class GaussianListWrapper:
@@ -113,7 +119,6 @@ class GaussianListWrapper:
             fitted_gp_list = self.par_pool(
                 delayed(gp.fit)(x_masked[i], y[:, i]) for i, gp in enumerate(self.gp_list))
         else:
-            i = 0
             fitted_gp_list = [gp.fit(x_masked[i], y[:, i]) for i, gp in enumerate(self.gp_list)]
         self.gp_list = fitted_gp_list
         # for gp in self.gp_list:
@@ -423,7 +428,7 @@ class ArcCosine(Kernel):
             return np.sin(theta) + (np.pi - theta) * np.cos(theta)
         elif self.order == 2:
             return 3. * np.sin(theta) * np.cos(theta) + \
-                   (np.pi - theta) * (1. + 2. * np.cos(theta) ** 2)
+                (np.pi - theta) * (1. + 2. * np.cos(theta) ** 2)
 
     def __call__(self, X, Y=None, eval_gradient=False):
         """Return the kernel k(X, Y) and optionally its gradient.
@@ -559,21 +564,135 @@ def create_target_function(list_of_target_functions, aggregation_function, inner
     return return_function
 
 
+class BoTorchGpWrapper:
+    def __init__(self, gp_class=None):
+        if gp_class is None:
+            gp_class = SingleTaskGP
+
+        self.gp_class = gp_class
+        self.gp = None
+        self.mll = None
+
+    def fit(self, x, y):
+        """Fit all Gaussian process regression models in the list.
+
+        Parameters
+        ----------
+        x : array-like, shape = (n_samples, n_features)
+            Training data
+
+        y : array-like, shape = (n_samples, [n_output_dims])
+            Target values
+
+        Returns
+        -------
+        self : returns an instance of self.
+        """
+        torch.set_num_threads(1)
+        x = torch.tensor(x, dtype=torch.double)
+        y = torch.tensor(y, dtype=torch.double).unsqueeze(1)
+        yvar = torch.full_like(y, 1e-6)
+        self.gp = self.gp_class(
+            train_X=x,
+            train_Y=y,
+            train_Yvar=yvar,
+            outcome_transform=Standardize(m=1),
+            input_transform=Normalize(d=x.shape[1]),
+        )
+        self.mll = ExactMarginalLogLikelihood(likelihood=self.gp.likelihood, model=self.gp, )
+        self.mll = self.mll.to(x)
+        fit_gpytorch_mll(self.mll)
+        return self
+
+    def predict(self, x, return_std=False, return_cov=False, return_full_target_space=False):
+        """Predict using the Gaussian process regression model
+
+                We can also predict based on an unfitted model by using the GP prior.
+                In addition to the mean of the predictive distribution, also its
+                standard deviation (return_std=True)
+                Note that at most one of the two can be requested.
+
+                Parameters
+                ----------
+                x : array-like, shape = (n_samples, n_features)
+                    Query points where the GP is evaluated
+
+                return_std : bool, default: False
+                    If True, the standard-deviation of the predictive distribution at
+                    the query points is returned along with the mean.
+
+                Returns
+                -------
+                y_mean : array, shape = (n_samples, [n_output_dims])
+                    Mean of predictive distribution a query points
+
+                y_std : array, shape = (n_samples,), optional
+                    Standard deviation of predictive distribution at query points.
+                    Only returned when return_std is True.
+
+                y_cov : array, shape = (n_samples, n_samples), optional
+                    Covariance of joint predictive distribution a query points.
+                    Only returned when return_cov is True.
+                """
+        with torch.no_grad():
+            self.gp.eval()
+            x = torch.tensor(x, dtype=torch.double)
+            posterior = self.gp.posterior(x, requires_grad=False)
+
+            dist = posterior.distribution
+            mean = dist.mean.detach().numpy()
+            if return_std:
+                variance = dist.variance.detach().numpy()
+                std = variance ** 0.5
+                return mean, std
+            else:
+                return mean
+
+    def sample_y(self, x, n_samples=1, random_state=0):
+        """Draw samples from Gaussian process and evaluate at X.
+
+                Parameters
+                ----------
+                x : array-like, shape = (n_samples_X, n_features)
+                    Query points where the GP samples are evaluated
+
+                n_samples : int, default: 1
+                    The number of samples drawn from the Gaussian process
+
+                random_state : int, RandomState instance or None, optional (default=0)
+                    If int, random_state is the seed used by the random number
+                    generator; If RandomState instance, random_state is the
+                    random number generator; If None, the random number
+                    generator is the RandomState instance used by `np.random`.
+
+                Returns
+                -------
+                y_samples : array, shape = (n_samples_X, [n_output_dims], n_samples)
+                    Values of n_samples samples drawn from Gaussian process and
+                    evaluated at query points.
+                """
+
+        x = torch.tensor(x, dtype=torch.double)
+        self.posterior = self.gp.posterior(x, requires_grad=False)
+        sample = self.posterior.rsample(torch.Size([n_samples])).detach().numpy()
+        return sample
+
+
 def create_gp_list(json_dict, kernel=RationalQuadratic, **kwargs):
     gp_list = []
     gp_name_list = []
     for exp_name, exp_dict in sorted(json_dict.experiments.items()):
         number_of_scores = len(exp_dict.feature_score_names)
-        # gps = [AnnModel(len(json_dict.parameters)) for _ in range(number_of_scores)]
-        gps = [GaussianProcessRegressor(kernel=kernel(**kwargs), alpha=1e-5, normalize_y=False,
-                                        n_restarts_optimizer=1)
-               for _ in range(number_of_scores)]
+        gps = [
+            # GaussianProcessRegressor(kernel=kernel(**kwargs), alpha=1e-5, normalize_y=False, n_restarts_optimizer=1)
+            BoTorchGpWrapper(SingleTaskGP)
+            for _ in range(number_of_scores)
+        ]
 
         gp_list.extend(gps)
         gp_name_list.extend(exp_dict.feature_score_names)
     if json_dict.only_aggregate_score:
-        gp_list = [GaussianProcessRegressor(kernel=kernel(**kwargs), alpha=1e-5, normalize_y=False,
-                                            n_restarts_optimizer=1)]
+        gp_list = [BoTorchGpWrapper(SingleTaskGP)]
         gp_name_list = ["aggregate"]
 
     return gp_list, gp_name_list
