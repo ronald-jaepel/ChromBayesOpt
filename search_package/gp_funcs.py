@@ -588,9 +588,10 @@ class BoTorchGpWrapper:
         -------
         self : returns an instance of self.
         """
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_num_threads(1)
-        x = torch.tensor(x, dtype=torch.double)
-        y = torch.tensor(y, dtype=torch.double).unsqueeze(1)
+        x = torch.tensor(x, dtype=torch.double, device=device)
+        y = torch.tensor(y, dtype=torch.double, device=device).unsqueeze(1)
         yvar = torch.full_like(y, 1e-6)
         self.gp = self.gp_class(
             train_X=x,
@@ -635,14 +636,15 @@ class BoTorchGpWrapper:
                     Only returned when return_cov is True.
                 """
         with torch.no_grad():
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.gp.eval()
-            x = torch.tensor(x, dtype=torch.double)
+            x = torch.tensor(x, dtype=torch.double, device=device)
             posterior = self.gp.posterior(x, requires_grad=False)
 
             dist = posterior.distribution
-            mean = dist.mean.detach().numpy()
+            mean = dist.mean.cpu().detach().numpy()
             if return_std:
-                variance = dist.variance.detach().numpy()
+                variance = dist.variance.cpu().detach().numpy()
                 std = variance ** 0.5
                 return mean, std
             else:
